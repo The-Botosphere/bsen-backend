@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import "dotenv/config";
 import fetch from "node-fetch";
-import Papa from "papaparse";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -13,55 +13,60 @@ const openai = new OpenAI({
 });
 
 export async function loadVideos() {
-  console.log("📥 Starting video loader...");
+  console.log("📥 Loading Google Sheet via JSON API…");
 
-  // Fetch CSV
-  const csvUrl = process.env.GOOGLE_SHEET_CSV;
-  const response = await fetch(csvUrl);
-  const csvText = await response.text();
+  // 1. Fetch JSON from Google Sheets
+  const url = process.env.GOOGLE_SHEET_CSV;
+  const response = await fetch(url);
+  const text = await response.text();
 
-  // Parse CSV properly (handles quotes, commas, etc.)
-  const parsed = Papa.parse(csvText, {
-    header: true,
-    skipEmptyLines: true
+  // 2. Google returns invalid JSON, so we must extract it
+  const json = JSON.parse(text.substring(text.indexOf("{"), text.lastIndexOf("}") + 1));
+
+  // 3. Convert Google JSON → normal row objects
+  const rows = json.table.rows.map((r) => {
+    const c = r.c || [];
+
+    return {
+      video_id: c[0]?.v || "",
+      title: c[1]?.v || "",
+      description: c[2]?.v || "",
+      channel_title: c[3]?.v || "",
+      published_at: c[4]?.v || "",
+      url: `https://www.youtube.com/watch?v=${c[0]?.v}`
+    };
   });
 
-  const rows = parsed.data;
-  console.log(`Parsed ${rows.length} rows`);
+  console.log(`📊 Parsed ${rows.length} rows from sheet.`);
 
   let count = 0;
 
   for (const row of rows) {
-    const video_id = row.video_id;
-    const title = row.title || "";
-    const description = row.description || "";
-    const channel_title = row.channel_title || "";
-    const published_at = row.published_at || null;
-    const url = `https://www.youtube.com/watch?v=${video_id}`;
+    if (!row.video_id) continue;
 
-    if (!video_id) continue;
-
-    // Generate embedding
+    // 4. Create embedding
     const embedding = await openai.embeddings.create({
       model: "text-embedding-3-small",
-      input: `${title} ${description}`
+      input: `${row.title} ${row.description}`
     });
 
     const vector = embedding.data[0].embedding;
 
-    // Insert into Supabase
-    await supabase.from("videos").insert({
-      video_id,
-      title,
-      description,
-      channel_title,
-      published_at,
-      url,
+    // 5. UPSERT → insert or update safely
+    await supabase.from("videos").upsert({
+      video_id: row.video_id,
+      title: row.title,
+      description: row.description,
+      channel_title: row.channel_title,
+      published_at: row.published_at,
+      url: row.url,
       vector
     });
 
     count++;
-    if (count % 50 === 0) console.log(`Loaded ${count} videos...`);
+    if (count % 50 === 0) {
+      console.log(`Loaded ${count} videos…`);
+    }
   }
 
   console.log(`✅ Finished loading ${count} videos.`);
