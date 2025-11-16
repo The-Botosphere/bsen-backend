@@ -31,12 +31,12 @@ app.get("/load", async (req, res) => {
       message: "Load complete",
       ...result
     });
-  } catch (error) {
-    console.error("❌ Load error:", error);
+  } catch (error) {    console.error("❌ Load error:", error);
     res.status(500).send({ error: error.message });
   }
 });
 
 
-const port = process.env.PORT || 3000;
+const port = 3000;
+
 app.listen(port, () => console.log(`🚀 BSEN backend running on ${port}`));
