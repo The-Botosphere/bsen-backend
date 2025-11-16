@@ -20,10 +20,14 @@ export async function loadVideos() {
   const response = await fetch(url);
   const text = await response.text();
 
-  // 2. Google returns invalid JSON, so we must extract it
-  const json = JSON.parse(text.substring(text.indexOf("{"), text.lastIndexOf("}") + 1));
+  // 2. Extract valid JSON from Google's wrapper
+  const jsonText = text
+    .replace(/^[^(]+\(/, "")   // Remove "google.visualization.Query.setResponse("
+    .replace(/\);?$/, "");     // Remove ");" at the end
 
-  // 3. Convert Google JSON → normal row objects
+  const json = JSON.parse(jsonText);
+
+  // 3. Convert Google JSON to rows
   const rows = json.table.rows.map((r) => {
     const c = r.c || [];
 
@@ -52,7 +56,7 @@ export async function loadVideos() {
 
     const vector = embedding.data[0].embedding;
 
-    // 5. UPSERT → insert or update safely
+    // 5. UPSERT into Supabase
     await supabase.from("videos").upsert({
       video_id: row.video_id,
       title: row.title,
