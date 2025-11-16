@@ -1,55 +1,89 @@
-import fetch from "node-fetch";
-import { parse } from "csv-parse/sync";
-import { supabase } from "./supabase.js";
-import { embedText } from "./embeddings.js";
-import { detectSport, cleanText } from "./utils.js";
+import { createClient } from "@supabase/supabase-js";
+import OpenAI from "openai";
 import "dotenv/config";
+import fetch from "node-fetch";
 
-async function loadVideos() {
-  console.log("📥 Fetching CSV from Google Sheets...");
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE
+);
 
-  const csvUrl = process.env.GOOGLE_SHEET_CSV;
-  const response = await fetch(csvUrl);
-  const csv = await response.text();
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-  const rows = parse(csv, { columns: true });
+export async function loadVideos() {
+  console.log("📥 Loading Google Sheet via JSON API…");
 
-  console.log(`📊 Loaded ${rows.length} rows from Google Sheet.`);
+  // 1. Fetch JSON from Google Sheets
+  const response = await fetch(process.env.GOOGLE_SHEET_CSV);
+  const text = await response.text();
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  // 2. Extract JSON from Google's wrapper
+  const jsonText = text
+    .replace(/^[^(]+\(/, "")    // remove function name
+    .replace(/\);?$/, "");      // remove ); at end
 
-    const title = cleanText(row.title || row.Title || "");
-    const url = row.url || row.URL || "";
-    const channel = row.channel || row.Channel || "";
-    const published_at = row.published_at || row.Published || null;
+  const json = JSON.parse(jsonText);
 
-    const sport = detectSport(title);
+  // 3. Map rows using YOUR sheet column order
+  const rows = json.table.rows.map((r) => {
+    const c = r.c || [];
 
-    const summary = `Video about ${sport} at OU: ${title}`;
+    const title = c[0]?.v || "";
+    const url = c[1]?.v || "";
+    const channel_title = c[2]?.v || "";
+    const published_at = c[3]?.v || "";
+    const description = c[4]?.v || "";
 
-    const vector = await embedText(`${title}. ${summary}`);
+    // Extract video_id from URL
+    let video_id = "";
+    if (url.includes("v=")) {
+      video_id = url.split("v=")[1].split("&")[0];
+    }
 
-    const { error } = await supabase
-      .from("videos")
-      .insert({
-        title,
-        url,
-        channel,
-        published_at,
-        sport,
-        summary,
-        vector
-      });
+    return {
+      video_id,
+      title,
+      description,
+      channel_title,
+      published_at,
+      url
+    };
+  });
 
-    if (error) {
-      console.log(`❌ Error row ${i + 1}:`, error.message);
-    } else {
-      console.log(`✅ Inserted row ${i + 1}/${rows.length}`);
+  console.log(`📊 Parsed ${rows.length} rows from sheet.`);
+
+  let count = 0;
+  for (const row of rows) {
+    if (!row.video_id) continue;
+
+    // 4. Generate embedding
+    const embedding = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: `${row.title} ${row.description}`
+    });
+
+    const vector = embedding.data[0].embedding;
+
+    // 5. Store in Supabase via UPSERT
+    await supabase.from("videos").upsert({
+      video_id: row.video_id,
+      title: row.title,
+      description: row.description,
+      channel_title: row.channel_title,
+      published_at: row.published_at,
+      url: row.url,
+      vector
+    });
+
+    count++;
+    if (count % 50 === 0) {
+      console.log(`Loaded ${count} videos…`);
     }
   }
 
-  console.log("🎉 Finished loading videos.");
+  console.log(`✅ Finished loading ${count} videos.`);
+  return { loaded: count };
 }
 
-loadVideos();
