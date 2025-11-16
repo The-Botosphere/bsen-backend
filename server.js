@@ -1,5 +1,6 @@
 import express from "express";
 import { searchVideos } from "./search.js";
+import { loadVideos } from "./load.js";  
 import "dotenv/config";
 
 const app = express();
