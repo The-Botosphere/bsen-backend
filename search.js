@@ -2,11 +2,8 @@ import { supabase } from "./supabase.js";
 import { embedText } from "./embeddings.js";
 
 export async function searchVideos(query) {
-  // Get correct vector array
-  const embeddingResult = await embedText(query);
-  const query_embedding = embeddingResult.data[0].embedding;
+  const query_embedding = await embedText(query);
 
-  // Call match_videos correctly
   const { data, error } = await supabase.rpc("match_videos", {
     query_embedding,
     match_threshold: 0.75,
@@ -14,7 +11,7 @@ export async function searchVideos(query) {
   });
 
   if (error) {
-    console.error("Supabase RPC error:", error);
+    console.error("Supabase RPC Error:", error);
     throw error;
   }
 
