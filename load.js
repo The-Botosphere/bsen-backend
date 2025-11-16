@@ -16,28 +16,39 @@ export async function loadVideos() {
   console.log("📥 Loading Google Sheet via JSON API…");
 
   // 1. Fetch JSON from Google Sheets
-  const url = process.env.GOOGLE_SHEET_CSV;
-  const response = await fetch(url);
+  const response = await fetch(process.env.GOOGLE_SHEET_CSV);
   const text = await response.text();
 
   // 2. Extract valid JSON from Google's wrapper
   const jsonText = text
-    .replace(/^[^(]+\(/, "")   // Remove "google.visualization.Query.setResponse("
-    .replace(/\);?$/, "");     // Remove ");" at the end
+    .replace(/^[^(]+\(/, "")   // remove "google.visualization.Query.setResponse("
+    .replace(/\);?$/, "");     // remove ");" at the end
 
   const json = JSON.parse(jsonText);
 
-  // 3. Convert Google JSON to rows
+  // 3. Convert Google JSON rows to objects using your column mapping
   const rows = json.table.rows.map((r) => {
     const c = r.c || [];
 
+    const title = c[0]?.v || "";
+    const url = c[1]?.v || "";
+    const channel_title = c[2]?.v || "";
+    const published_at = c[3]?.v || "";
+    const description = c[4]?.v || "";
+
+    // Extract video_id from URL if present
+    let video_id = "";
+    if (url && url.includes("v=")) {
+      video_id = url.split("v=")[1].split("&")[0];
+    }
+
     return {
-      video_id: c[0]?.v || "",
-      title: c[1]?.v || "",
-      description: c[2]?.v || "",
-      channel_title: c[3]?.v || "",
-      published_at: c[4]?.v || "",
-      url: `https://www.youtube.com/watch?v=${c[0]?.v}`
+      video_id,
+      title,
+      description,
+      channel_title,
+      published_at,
+      url
     };
   });
 
@@ -45,10 +56,23 @@ export async function loadVideos() {
 
   let count = 0;
 
+  // 4. Loop through rows and UPSERT valid videos
   for (const row of rows) {
-    if (!row.video_id) continue;
 
-    // 4. Create embedding
+    // 4A. Filter out copyright rows, incomplete rows, footer rows, garbage
+    if (
+      !row.url ||
+      !row.video_id ||
+      row.video_id.length !== 11 ||          // invalid video_id (YouTube = 11 chars)
+      !row.title ||
+      row.title.trim() === "" ||
+      row.title.toLowerCase().includes("copyright") || 
+      row.url.toLowerCase().includes("copyright")
+    ) {
+      continue;
+    }
+
+    // 4B. Create embedding from title + description
     const embedding = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: `${row.title} ${row.description}`
@@ -56,7 +80,7 @@ export async function loadVideos() {
 
     const vector = embedding.data[0].embedding;
 
-    // 5. UPSERT into Supabase
+    // 4C. Write to Supabase using UPSERT
     await supabase.from("videos").upsert({
       video_id: row.video_id,
       title: row.title,
@@ -73,6 +97,6 @@ export async function loadVideos() {
     }
   }
 
-  console.log(`✅ Finished loading ${count} videos.`);
+  console.log(`✅ Finished loading ${count} valid videos.`);
   return { loaded: count };
 }
