@@ -22,6 +22,21 @@ app.get("/search", async (req, res) => {
     res.status(500).send({ error: e.message });
   }
 });
+// Load CSV data into Supabase with embeddings
+app.get("/load", async (req, res) => {
+  try {
+    console.log("📥 /load endpoint triggered...");
+    const result = await loadVideos();
+    res.send({
+      message: "Load complete",
+      ...result
+    });
+  } catch (error) {
+    console.error("❌ Load error:", error);
+    res.status(500).send({ error: error.message });
+  }
+});
+
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`🚀 BSEN backend running on ${port}`));
