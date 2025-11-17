@@ -6,7 +6,7 @@ export async function searchVideos(query) {
 
   const { data, error } = await supabase.rpc("match_videos", {
     query_embedding,
-    match_threshold: 0.75,
+    match_threshold: 0.5,
     match_count: 10
   });
 
