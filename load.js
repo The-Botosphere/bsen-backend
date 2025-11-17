@@ -93,4 +93,25 @@ export async function loadVideos() {
           channel_title: row.channel_title,
           published_at: row.published_at,
           url: row.url,
- 
+          vector
+        });
+        
+        if (error) {
+          console.error(`❌ Error inserting video ${row.video_id}:`, error.message);
+          errors++;
+        } else {
+          count++;
+        }
+      } catch (err) {
+        console.error(`❌ Exception processing video ${row.video_id}:`, err.message);
+        errors++;
+      }
+    }
+    
+    console.log("😴 Sleeping 3 seconds to avoid Railway timeout…");
+    await sleep(3000);
+  }
+  
+  console.log(`✅ Finished loading ${count} valid videos (${errors} errors).`);
+  return { loaded: count, errors };
+}
