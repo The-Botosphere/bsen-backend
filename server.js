@@ -57,19 +57,31 @@ async function loadRoutes() {
     app.get("/test-db", async (req, res) => {
       try {
         const { supabase } = await import("./supabase.js");
+        
+        // Get total count
+        const { count, error: countError } = await supabase
+          .from("videos")
+          .select("*", { count: 'exact', head: true });
+        
+        if (countError) throw countError;
+        
+        // Get first 3 rows
         const { data, error } = await supabase
           .from("videos")
-          .select("id, title, vector")
+          .select("id, title, video_id, vector")
           .limit(3);
         
         if (error) throw error;
         
-        const hasVectors = data.every(v => v.vector && v.vector.length > 0);
-        
         res.json({
-          total_returned: data.length,
-          has_vectors: hasVectors,
-          sample: data
+          total_in_db: count,
+          returned: data.length,
+          sample: data.map(v => ({
+            id: v.id,
+            title: v.title,
+            video_id: v.video_id,
+            has_vector: v.vector ? v.vector.length > 0 : false
+          }))
         });
       } catch (e) {
         res.status(500).json({ error: e.message });
