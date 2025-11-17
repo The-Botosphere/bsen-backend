@@ -88,8 +88,47 @@ async function loadRoutes() {
       }
     });
     
+    app.get("/debug-search", async (req, res) => {
+      try {
+        const { supabase } = await import("./supabase.js");
+        const { embedText } = await import("./embeddings.js");
+        
+        const query = req.query.q || "oklahoma football";
+        console.log("🔍 Searching for:", query);
+        
+        // Get the embedding
+        const query_embedding = await embedText(query);
+        console.log("✅ Got embedding, length:", query_embedding.length);
+        
+        // Try the RPC call
+        const { data, error } = await supabase.rpc("match_videos", {
+          query_embedding,
+          match_threshold: 0.5,
+          match_count: 10
+        });
+        
+        if (error) {
+          console.error("❌ RPC Error:", error);
+          return res.status(500).json({ error: error.message });
+        }
+        
+        console.log("📊 Results:", data ? data.length : 0);
+        
+        res.json({
+          query,
+          results_count: data ? data.length : 0,
+          results: data
+        });
+      } catch (e) {
+        console.error("❌ Exception:", e);
+        res.status(500).json({ error: e.message });
+      }
+    });
+    
     console.log("✅ All routes registered");
   } catch (error) {
     console.error("❌ Failed to load routes:", error);
   }
 }
+ 
+      
