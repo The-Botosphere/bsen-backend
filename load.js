@@ -34,8 +34,19 @@ export async function loadVideos() {
     const title = c[0]?.v || "";
     const url = c[1]?.v || "";
     const channel_title = c[2]?.v || "";
-    const published_at = c[3]?.v || "";
+    const published_at_raw = c[3]?.v || "";
     const description = c[4]?.v || "";
+    
+    // Parse Google Sheets date format: "Date(2025,8,21)"
+    let published_at = null;
+    if (published_at_raw && published_at_raw.includes("Date(")) {
+      const match = published_at_raw.match(/Date\((\d+),(\d+),(\d+)\)/);
+      if (match) {
+        const [_, year, month, day] = match;
+        // Google Sheets months are 0-indexed (0=Jan, 8=Sep)
+        published_at = new Date(parseInt(year), parseInt(month), parseInt(day)).toISOString();
+      }
+    }
     
     let video_id = "";
     if (url && url.includes("v=")) {
@@ -82,25 +93,4 @@ export async function loadVideos() {
           channel_title: row.channel_title,
           published_at: row.published_at,
           url: row.url,
-          vector
-        });
-        
-        if (error) {
-          console.error(`❌ Error inserting video ${row.video_id}:`, error.message);
-          errors++;
-        } else {
-          count++;
-        }
-      } catch (err) {
-        console.error(`❌ Exception processing video ${row.video_id}:`, err.message);
-        errors++;
-      }
-    }
-    
-    console.log("😴 Sleeping 3 seconds to avoid Railway timeout…");
-    await sleep(3000);
-  }
-  
-  console.log(`✅ Finished loading ${count} valid videos (${errors} errors).`);
-  return { loaded: count, errors };
-}
+ 
