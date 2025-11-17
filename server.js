@@ -49,6 +49,28 @@ async function loadRoutes() {
           message: "Load complete",
           ...result
         });
+        app.get("/test-db", async (req, res) => {
+  try {
+    const { supabase } = await import("./supabase.js");
+    const { data, error } = await supabase
+      .from("videos")
+      .select("id, title, vector")
+      .limit(3);
+    
+    if (error) throw error;
+    
+    // Check if vectors exist
+    const hasVectors = data.every(v => v.vector && v.vector.length > 0);
+    
+    res.json({
+      total_returned: data.length,
+      has_vectors: hasVectors,
+      sample: data
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
       } catch (error) {
         console.error("❌ Load error:", error);
         res.status(500).send({ error: error.message });
